@@ -27,7 +27,7 @@ ticket-classification/
 - Person 1: `app/api/health/route.ts` and `.env.local`
 - Person 2: `app/api/sort-ticket/route.ts`
 - Person 3: `lib/classifier.ts`
-- Shared: `types/index.ts` and README documentation
+- Shared: `types/index.ts` and README documentation. asd
 
 ## API Routes
 
@@ -41,12 +41,12 @@ Classifies a support ticket and routes it to the correct department.
 
 #### Request Schema
 
-| Field       | Type   | Required | Description                          |
-|-------------|--------|----------|--------------------------------------|
-| `ticket_id` | string | ✅ Yes   | Non-empty unique ticket identifier   |
-| `message`   | string | ✅ Yes   | Non-empty customer message text      |
-| `channel`   | string | ❌ No    | Originating channel (e.g. `"web"`)   |
-| `locale`    | string | ❌ No    | Locale code (e.g. `"en"`)            |
+| Field       | Type   | Required | Description                        |
+| ----------- | ------ | -------- | ---------------------------------- |
+| `ticket_id` | string | ✅ Yes   | Non-empty unique ticket identifier |
+| `message`   | string | ✅ Yes   | Non-empty customer message text    |
+| `channel`   | string | ❌ No    | Originating channel (e.g. `"web"`) |
+| `locale`    | string | ❌ No    | Locale code (e.g. `"en"`)          |
 
 Example request body:
 
@@ -63,15 +63,15 @@ Example request body:
 
 All fields are returned at the **top level** (not wrapped in a `ticket` object).
 
-| Field                   | Type    | Description                                              |
-|-------------------------|---------|----------------------------------------------------------|
-| `ticket_id`             | string  | Echoed from the request                                  |
+| Field                   | Type    | Description                                                                                             |
+| ----------------------- | ------- | ------------------------------------------------------------------------------------------------------- |
+| `ticket_id`             | string  | Echoed from the request                                                                                 |
 | `case_type`             | string  | One of: `wrong_transfer`, `payment_failed`, `refund_request`, `phishing_or_social_engineering`, `other` |
-| `severity`              | string  | One of: `low`, `medium`, `high`, `critical`             |
-| `department`            | string  | One of: `customer_support`, `dispute_resolution`, `payments_ops`, `fraud_risk` |
-| `agent_summary`         | string  | Human-readable summary — safety-filtered before return  |
-| `human_review_required` | boolean | Whether a human agent must review this ticket           |
-| `confidence`            | number  | Classifier confidence score between `0` and `1`         |
+| `severity`              | string  | One of: `low`, `medium`, `high`, `critical`                                                             |
+| `department`            | string  | One of: `customer_support`, `dispute_resolution`, `payments_ops`, `fraud_risk`                          |
+| `agent_summary`         | string  | Human-readable summary — safety-filtered before return                                                  |
+| `human_review_required` | boolean | Whether a human agent must review this ticket                                                           |
+| `confidence`            | number  | Classifier confidence score between `0` and `1`                                                         |
 
 Example response:
 
