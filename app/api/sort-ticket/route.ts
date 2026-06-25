@@ -1,27 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { classifyTicket } from "@/lib/classifier";
-import type { SortTicketRequest, ValidationError } from "@/types";
+import type {
+  SortTicketRequest,
+  SortTicketResponse,
+  ValidationError,
+} from "@/types";
 
-const UNSAFE_SUMMARY_PATTERNS = [
-  /share (your )?(pin|otp|password)/i,
-  /send (your )?(pin|otp|password)/i,
-  /provide (your )?(pin|otp|password)/i,
-  /enter (your )?(pin|otp|password)/i,
-  /full card number/i,
-  /complete card number/i,
-  /card number.*(share|send|provide|enter)/i,
+// ---------------------------------------------------------------------------
+// Safety filter
+// Patterns that indicate the summary may be instructing someone to share
+// sensitive credentials or account data with a third party.
+// ---------------------------------------------------------------------------
+const UNSAFE_SUMMARY_PATTERNS: RegExp[] = [
+  // Direct imperatives — "share/send/provide/give/enter your PIN/OTP/…"
+  /\b(share|send|provide|give|enter|disclose|reveal|submit)\b.{0,40}\b(pin|otp|password|passcode|full card number|card number)\b/i,
+  // Reversed order — "PIN … share/send"
+  /\b(pin|otp|password|passcode|full card number|card number)\b.{0,40}\b(share|send|provide|give|enter|disclose|reveal|submit)\b/i,
+  // Imperative phrasing targeting the agent summary reader
+  /do not share your\b/i,
+  /never share your\b/i,
+  // Generic "please share" with any sensitive word anywhere
+  /please (share|send|provide|give).{0,60}\b(pin|otp|password|card)\b/i,
 ];
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requiredString(
+  body: Record<string, unknown>,
+  field: "ticket_id" | "message",
+  errors: ValidationError[],
+): string {
+  const value = body[field];
+
+  if (typeof value !== "string" || value.trim().length === 0) {
+    errors.push({
+      field,
+      message: `${field} is required and must be a string.`,
+    });
+    return "";
+  }
+
+  return value.trim();
 }
 
 function optionalString(
   body: Record<string, unknown>,
   field: "channel" | "locale",
   errors: ValidationError[],
-) {
+): string | undefined {
   const value = body[field];
 
   if (value === undefined) {
@@ -29,23 +62,11 @@ function optionalString(
   }
 
   if (typeof value !== "string") {
-    errors.push({ field, message: `${field} must be a string when provided.` });
+    errors.push({
+      field,
+      message: `${field} must be a string when provided.`,
+    });
     return undefined;
-  }
-
-  return value.trim();
-}
-
-function requiredString(
-  body: Record<string, unknown>,
-  field: "ticket_id" | "message",
-  errors: ValidationError[],
-) {
-  const value = body[field];
-
-  if (typeof value !== "string" || value.trim().length === 0) {
-    errors.push({ field, message: `${field} is required and must be a string.` });
-    return "";
   }
 
   return value.trim();
@@ -62,7 +83,8 @@ function validateBody(body: unknown): {
   }
 
   const errors: ValidationError[] = [];
-  const ticketId = requiredString(body, "ticket_id", errors);
+
+  const ticket_id = requiredString(body, "ticket_id", errors);
   const message = requiredString(body, "message", errors);
   const channel = optionalString(body, "channel", errors);
   const locale = optionalString(body, "locale", errors);
@@ -72,31 +94,34 @@ function validateBody(body: unknown): {
   }
 
   return {
-    data: {
-      ticket_id: ticketId,
-      channel,
-      locale,
-      message,
-    },
-    errors,
+    data: { ticket_id, message, channel, locale },
+    errors: [],
   };
 }
 
-function sanitizeAgentSummary(summary: string) {
-  const containsUnsafeRequest = UNSAFE_SUMMARY_PATTERNS.some((pattern) =>
-    pattern.test(summary),
-  );
+/**
+ * Sanitizes `agent_summary` so it never contains language that could be read
+ * as instructing an agent or customer to share sensitive credentials.
+ *
+ * The safety message is the canonical replacement defined in the sprint plan.
+ */
+function sanitizeAgentSummary(summary: string): string {
+  const isSafe = !UNSAFE_SUMMARY_PATTERNS.some((re) => re.test(summary));
 
-  if (!containsUnsafeRequest) {
+  if (isSafe) {
     return summary;
   }
 
   return "Customer reports a sensitive account or payment issue. Do not request PINs, OTPs, passwords, or full card numbers from the customer.";
 }
 
-export async function POST(request: NextRequest) {
-  let body: unknown;
+// ---------------------------------------------------------------------------
+// Route handler
+// ---------------------------------------------------------------------------
 
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  // 1. Parse JSON body
+  let body: unknown;
   try {
     body = await request.json();
   } catch {
@@ -106,17 +131,29 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // 2. Validate fields
   const { data, errors } = validateBody(body);
 
   if (!data) {
     return NextResponse.json({ errors }, { status: 400 });
   }
 
+  // 3. Classify the ticket (Person 3's module — treated as a pure dependency)
   const classification = classifyTicket(data.message);
 
-  return NextResponse.json({
+  // 4. Apply safety filter to agent_summary
+  const safeAgentSummary = sanitizeAgentSummary(classification.agent_summary);
+
+  // 5. Build the flat top-level response (no wrapping object)
+  const response: SortTicketResponse = {
     ticket_id: data.ticket_id,
-    ...classification,
-    agent_summary: sanitizeAgentSummary(classification.agent_summary),
-  });
+    case_type: classification.case_type,
+    severity: classification.severity,
+    department: classification.department,
+    agent_summary: safeAgentSummary,
+    human_review_required: classification.human_review_required,
+    confidence: classification.confidence,
+  };
+
+  return NextResponse.json(response, { status: 200 });
 }
