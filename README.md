@@ -1,6 +1,6 @@
 # Ticket Classification
 
-Next.js API project for classifying support tickets by category, priority, and destination team.
+Next.js API project for classifying support tickets by case type, severity, and destination department.
 
 ## Project Structure
 
@@ -43,9 +43,10 @@ Example body:
 
 ```json
 {
-  "title": "Payment failed",
-  "description": "My invoice payment failed and I need help urgently.",
-  "customerEmail": "customer@example.com"
+  "ticket_id": "TICKET-123",
+  "channel": "web",
+  "locale": "en",
+  "message": "Payment failed but I was charged twice and need a refund."
 }
 ```
 
@@ -53,16 +54,13 @@ Example response:
 
 ```json
 {
-  "ticket": {
-    "category": "billing",
-    "priority": "urgent",
-    "confidence": 0.7,
-    "reasons": [
-      "Matched 2 billing keyword(s).",
-      "Matched 2 urgent priority keyword(s)."
-    ],
-    "routedTo": "billing-support"
-  }
+  "ticket_id": "TICKET-123",
+  "case_type": "payment_failed",
+  "severity": "high",
+  "department": "payments_ops",
+  "agent_summary": "Customer reports a payment failed issue: Payment failed but I was charged twice and need a refund. Current severity is high.",
+  "human_review_required": false,
+  "confidence": 0.63
 }
 ```
 
@@ -93,7 +91,7 @@ Ticket classification:
 ```bash
 curl -X POST http://localhost:3000/api/sort-ticket \
   -H "Content-Type: application/json" \
-  -d '{"description":"I was charged twice and need a refund urgently."}'
+  -d '{"ticket_id":"T-001","message":"I was charged twice and need a refund urgently."}'
 ```
 
 ## Environment
@@ -106,4 +104,4 @@ OPENAI_API_KEY=
 
 ## Notes
 
-The classifier currently uses regex rules in `lib/classifier.ts`. Replace or extend that module when the LLM integration is ready.
+The classifier currently uses regex rules in `lib/classifier.ts`. Replace or extend that module when the LLM integration is ready. See `IMPLEMENTATION.md` for the full module plan, schema, safety rule, and runbook.

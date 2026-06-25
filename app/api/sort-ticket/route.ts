@@ -3,8 +3,52 @@ import { NextRequest, NextResponse } from "next/server";
 import { classifyTicket } from "@/lib/classifier";
 import type { SortTicketRequest, ValidationError } from "@/types";
 
+const UNSAFE_SUMMARY_PATTERNS = [
+  /share (your )?(pin|otp|password)/i,
+  /send (your )?(pin|otp|password)/i,
+  /provide (your )?(pin|otp|password)/i,
+  /enter (your )?(pin|otp|password)/i,
+  /full card number/i,
+  /complete card number/i,
+  /card number.*(share|send|provide|enter)/i,
+];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function optionalString(
+  body: Record<string, unknown>,
+  field: "channel" | "locale",
+  errors: ValidationError[],
+) {
+  const value = body[field];
+
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    errors.push({ field, message: `${field} must be a string when provided.` });
+    return undefined;
+  }
+
+  return value.trim();
+}
+
+function requiredString(
+  body: Record<string, unknown>,
+  field: "ticket_id" | "message",
+  errors: ValidationError[],
+) {
+  const value = body[field];
+
+  if (typeof value !== "string" || value.trim().length === 0) {
+    errors.push({ field, message: `${field} is required and must be a string.` });
+    return "";
+  }
+
+  return value.trim();
 }
 
 function validateBody(body: unknown): {
@@ -18,27 +62,10 @@ function validateBody(body: unknown): {
   }
 
   const errors: ValidationError[] = [];
-  const title = body.title;
-  const description = body.description;
-  const customerEmail = body.customerEmail;
-
-  if (title !== undefined && typeof title !== "string") {
-    errors.push({ field: "title", message: "Title must be a string." });
-  }
-
-  if (typeof description !== "string" || description.trim().length === 0) {
-    errors.push({
-      field: "description",
-      message: "Description is required and must be a non-empty string.",
-    });
-  }
-
-  if (customerEmail !== undefined && typeof customerEmail !== "string") {
-    errors.push({
-      field: "customerEmail",
-      message: "Customer email must be a string.",
-    });
-  }
+  const ticketId = requiredString(body, "ticket_id", errors);
+  const message = requiredString(body, "message", errors);
+  const channel = optionalString(body, "channel", errors);
+  const locale = optionalString(body, "locale", errors);
 
   if (errors.length > 0) {
     return { errors };
@@ -46,13 +73,25 @@ function validateBody(body: unknown): {
 
   return {
     data: {
-      title: typeof title === "string" ? title.trim() : undefined,
-      description: (description as string).trim(),
-      customerEmail:
-        typeof customerEmail === "string" ? customerEmail.trim() : undefined,
+      ticket_id: ticketId,
+      channel,
+      locale,
+      message,
     },
     errors,
   };
+}
+
+function sanitizeAgentSummary(summary: string) {
+  const containsUnsafeRequest = UNSAFE_SUMMARY_PATTERNS.some((pattern) =>
+    pattern.test(summary),
+  );
+
+  if (!containsUnsafeRequest) {
+    return summary;
+  }
+
+  return "Customer reports a sensitive account or payment issue. Do not request PINs, OTPs, passwords, or full card numbers from the customer.";
 }
 
 export async function POST(request: NextRequest) {
@@ -73,7 +112,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ errors }, { status: 400 });
   }
 
+  const classification = classifyTicket(data.message);
+
   return NextResponse.json({
-    ticket: classifyTicket(data),
+    ticket_id: data.ticket_id,
+    ...classification,
+    agent_summary: sanitizeAgentSummary(classification.agent_summary),
   });
 }

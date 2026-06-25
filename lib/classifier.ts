@@ -1,88 +1,168 @@
 import {
-  TicketCategory,
-  TicketPriority,
-  type SortTicketRequest,
-  type SortedTicket,
+  CaseType,
+  Department,
+  Severity,
+  type TicketClassification,
 } from "@/types";
 
-const CATEGORY_RULES: Array<{
-  category: TicketCategory;
-  routedTo: string;
-  keywords: RegExp[];
+const CASE_RULES: Array<{
+  caseType: CaseType;
+  patterns: RegExp[];
 }> = [
   {
-    category: TicketCategory.Billing,
-    routedTo: "billing-support",
-    keywords: [/bill/i, /invoice/i, /payment/i, /refund/i, /charge/i],
+    caseType: CaseType.PhishingOrSocialEngineering,
+    patterns: [
+      /\botp\b/i,
+      /\bpin\b/i,
+      /password/i,
+      /phish/i,
+      /scam/i,
+      /social engineering/i,
+      /asked.*(code|credential|card)/i,
+      /share.*(otp|pin|password|card)/i,
+    ],
   },
   {
-    category: TicketCategory.Technical,
-    routedTo: "technical-support",
-    keywords: [/bug/i, /error/i, /crash/i, /broken/i, /cannot log/i],
+    caseType: CaseType.WrongTransfer,
+    patterns: [
+      /wrong (transfer|account|recipient|number)/i,
+      /sent .* wrong/i,
+      /transferred .* wrong/i,
+      /mistaken transfer/i,
+      /incorrect recipient/i,
+    ],
   },
   {
-    category: TicketCategory.Account,
-    routedTo: "account-support",
-    keywords: [/account/i, /password/i, /login/i, /profile/i, /access/i],
+    caseType: CaseType.PaymentFailed,
+    patterns: [
+      /payment failed/i,
+      /transaction failed/i,
+      /payment declined/i,
+      /could not pay/i,
+      /payment.*not.*(complete|successful|working)/i,
+      /charged.*but.*failed/i,
+    ],
+  },
+  {
+    caseType: CaseType.RefundRequest,
+    patterns: [
+      /refund/i,
+      /money back/i,
+      /reverse.*charge/i,
+      /cancel.*payment/i,
+      /charged twice/i,
+      /duplicate charge/i,
+    ],
   },
 ];
 
-const PRIORITY_RULES: Array<{
-  priority: TicketPriority;
-  keywords: RegExp[];
-}> = [
-  {
-    priority: TicketPriority.Urgent,
-    keywords: [/urgent/i, /critical/i, /down/i, /outage/i, /immediately/i],
-  },
-  {
-    priority: TicketPriority.High,
-    keywords: [/blocked/i, /cannot/i, /failed/i, /asap/i],
-  },
-  {
-    priority: TicketPriority.Medium,
-    keywords: [/issue/i, /problem/i, /help/i],
-  },
+const CRITICAL_PATTERNS = [
+  /\botp\b/i,
+  /\bpin\b/i,
+  /password/i,
+  /credential/i,
+  /account takeover/i,
+  /fraud/i,
+  /scam/i,
+  /phish/i,
 ];
 
-function countMatches(text: string, keywords: RegExp[]) {
-  return keywords.filter((keyword) => keyword.test(text)).length;
+const HIGH_PATTERNS = [
+  /wrong transfer/i,
+  /large amount/i,
+  /urgent/i,
+  /asap/i,
+  /blocked/i,
+  /charged twice/i,
+  /duplicate charge/i,
+];
+
+const MEDIUM_PATTERNS = [
+  /failed/i,
+  /declined/i,
+  /refund/i,
+  /not received/i,
+  /pending/i,
+  /issue/i,
+  /problem/i,
+];
+
+function countMatches(message: string, patterns: RegExp[]) {
+  return patterns.filter((pattern) => pattern.test(message)).length;
 }
 
-export function classifyTicket(ticket: SortTicketRequest): SortedTicket {
-  const text = `${ticket.title ?? ""} ${ticket.description}`.trim();
+function detectCaseType(message: string) {
+  const matches = CASE_RULES.map((rule) => ({
+    caseType: rule.caseType,
+    score: countMatches(message, rule.patterns),
+  })).sort((a, b) => b.score - a.score);
 
-  const categoryMatch = CATEGORY_RULES.map((rule) => ({
-    ...rule,
-    score: countMatches(text, rule.keywords),
-  })).sort((a, b) => b.score - a.score)[0];
+  return matches[0].score > 0 ? matches[0] : { caseType: CaseType.Other, score: 0 };
+}
 
-  const priorityMatch = PRIORITY_RULES.map((rule) => ({
-    ...rule,
-    score: countMatches(text, rule.keywords),
-  })).sort((a, b) => b.score - a.score)[0];
+function detectSeverity(message: string, caseType: CaseType) {
+  if (
+    caseType === CaseType.PhishingOrSocialEngineering ||
+    countMatches(message, CRITICAL_PATTERNS) > 0
+  ) {
+    return Severity.Critical;
+  }
 
-  const hasCategoryMatch = categoryMatch.score > 0;
-  const hasPriorityMatch = priorityMatch.score > 0;
-  const category = hasCategoryMatch
-    ? categoryMatch.category
-    : TicketCategory.General;
-  const priority = hasPriorityMatch
-    ? priorityMatch.priority
-    : TicketPriority.Low;
+  if (countMatches(message, HIGH_PATTERNS) > 0) {
+    return Severity.High;
+  }
+
+  if (countMatches(message, MEDIUM_PATTERNS) > 0) {
+    return Severity.Medium;
+  }
+
+  return Severity.Low;
+}
+
+function mapDepartment(caseType: CaseType) {
+  switch (caseType) {
+    case CaseType.WrongTransfer:
+      return Department.DisputeResolution;
+    case CaseType.PaymentFailed:
+      return Department.PaymentsOps;
+    case CaseType.RefundRequest:
+      return Department.CustomerSupport;
+    case CaseType.PhishingOrSocialEngineering:
+      return Department.FraudRisk;
+    case CaseType.Other:
+    default:
+      return Department.CustomerSupport;
+  }
+}
+
+function summarize(message: string, caseType: CaseType, severity: Severity) {
+  const cleanedMessage = message.replace(/\s+/g, " ").trim();
+  const shortMessage =
+    cleanedMessage.length > 180
+      ? `${cleanedMessage.slice(0, 177).trim()}...`
+      : cleanedMessage;
+
+  return `Customer reports a ${caseType.replaceAll("_", " ")} issue: ${shortMessage}. Current severity is ${severity}.`;
+}
+
+function confidenceFor(caseScore: number, severity: Severity) {
+  const severityBoost = severity === Severity.Critical ? 0.1 : 0;
+  return Math.min(0.95, Number((0.45 + caseScore * 0.18 + severityBoost).toFixed(2)));
+}
+
+export function classifyTicket(message: string): TicketClassification {
+  const normalizedMessage = message.trim();
+  const caseMatch = detectCaseType(normalizedMessage);
+  const severity = detectSeverity(normalizedMessage, caseMatch.caseType);
 
   return {
-    category,
-    priority,
-    confidence: hasCategoryMatch ? Math.min(0.95, 0.55 + categoryMatch.score * 0.15) : 0.35,
-    reasons: [
-      hasCategoryMatch
-        ? `Matched ${categoryMatch.score} ${category} keyword(s).`
-        : "No category-specific keywords matched.",
-      hasPriorityMatch
-        ? `Matched ${priorityMatch.score} ${priority} priority keyword(s).`
-        : "No urgent priority keywords matched.",
-    ],
-    routedTo: hasCategoryMatch ? categoryMatch.routedTo : "general-support",
+    case_type: caseMatch.caseType,
+    severity,
+    department: mapDepartment(caseMatch.caseType),
+    agent_summary: summarize(normalizedMessage, caseMatch.caseType, severity),
+    human_review_required:
+      severity === Severity.Critical ||
+      caseMatch.caseType === CaseType.PhishingOrSocialEngineering,
+    confidence: confidenceFor(caseMatch.score, severity),
   };
 }
