@@ -138,22 +138,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ errors }, { status: 400 });
   }
 
-  // 3. Classify the ticket (Person 3's module — treated as a pure dependency)
-  const classification = classifyTicket(data.message);
-
-  // 4. Apply safety filter to agent_summary
-  const safeAgentSummary = sanitizeAgentSummary(classification.agent_summary);
-
-  // 5. Build the flat top-level response (no wrapping object)
-  const response: SortTicketResponse = {
-    ticket_id: data.ticket_id,
-    case_type: classification.case_type,
-    severity: classification.severity,
-    department: classification.department,
-    agent_summary: safeAgentSummary,
-    human_review_required: classification.human_review_required,
-    confidence: classification.confidence,
-  };
-
-  return NextResponse.json(response, { status: 200 });
+  return NextResponse.json({
+    ticket: await classifyTicket(data),
+  });
 }

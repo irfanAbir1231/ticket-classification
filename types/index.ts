@@ -1,24 +1,17 @@
-export enum CaseType {
-  WrongTransfer = "wrong_transfer",
-  PaymentFailed = "payment_failed",
-  RefundRequest = "refund_request",
-  PhishingOrSocialEngineering = "phishing_or_social_engineering",
-  Other = "other",
-}
+export type CaseType =
+  | "wrong_transfer"
+  | "payment_failed"
+  | "refund_request"
+  | "phishing_or_social_engineering"
+  | "other";
 
-export enum Severity {
-  Low = "low",
-  Medium = "medium",
-  High = "high",
-  Critical = "critical",
-}
+export type Severity = "low" | "medium" | "high" | "critical";
 
-export enum Department {
-  CustomerSupport = "customer_support",
-  DisputeResolution = "dispute_resolution",
-  PaymentsOps = "payments_ops",
-  FraudRisk = "fraud_risk",
-}
+export type Department =
+  | "customer_support"
+  | "dispute_resolution"
+  | "payments_ops"
+  | "fraud_risk";
 
 export interface SortTicketRequest {
   ticket_id: string;
@@ -27,13 +20,12 @@ export interface SortTicketRequest {
   message: string;
 }
 
-export interface TicketClassification {
+export interface SortedTicket {
   case_type: CaseType;
   severity: Severity;
   department: Department;
   agent_summary: string;
   human_review_required: boolean;
-  confidence: number;
 }
 
 export interface SortTicketResponse extends TicketClassification {
@@ -44,3 +36,4 @@ export interface ValidationError {
   field: string;
   message: string;
 }
+
