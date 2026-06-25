@@ -20,12 +20,13 @@ export interface SortTicketRequest {
   message: string;
 }
 
-export interface SortedTicket {
+export interface TicketClassification {
   case_type: CaseType;
   severity: Severity;
   department: Department;
   agent_summary: string;
   human_review_required: boolean;
+  confidence: number;
 }
 
 export interface SortTicketResponse extends TicketClassification {
@@ -36,4 +37,3 @@ export interface ValidationError {
   field: string;
   message: string;
 }
-

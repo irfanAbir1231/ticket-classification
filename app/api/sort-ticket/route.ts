@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { classifyTicket } from "@/lib/classifier";
 import type {
   SortTicketRequest,
-  SortTicketResponse,
   ValidationError,
 } from "@/types";
 
@@ -138,7 +137,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ errors }, { status: 400 });
   }
 
+  const classification = classifyTicket(data.message);
+
   return NextResponse.json({
-    ticket: await classifyTicket(data),
+    ticket_id: data.ticket_id,
+    ...classification,
+    agent_summary: sanitizeAgentSummary(classification.agent_summary),
   });
 }
