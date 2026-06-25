@@ -2,7 +2,8 @@ import type {
   CaseType,
   Department,
   Severity,
-  TicketClassification,
+  SortTicketRequest,
+  SortedTicket,
 } from "@/types";
 
 type CaseRule = {
@@ -163,15 +164,17 @@ export async function classifyTicket(ticket: SortTicketRequest): Promise<SortedT
 
   if (!apiKey) {
     console.warn("WARNING: GROQ_API_KEY is not set. Falling back to rule-based mock classifier.");
-    const mock = getMockClassification(text);
-    const department = getDepartment(mock.case_type);
-    const human_review_required = mock.severity === "critical" || mock.case_type === "phishing_or_social_engineering";
+    const case_type = detectCaseType(text).caseType;
+    const severity = detectSeverity(text, case_type);
+    const department = mapDepartment(case_type);
+    const agent_summary = summarize(text, case_type, severity);
+    const human_review_required = severity === "critical" || case_type === "phishing_or_social_engineering";
 
     return {
-      case_type: mock.case_type,
-      severity: mock.severity,
+      case_type,
+      severity,
       department,
-      agent_summary: mock.agent_summary,
+      agent_summary,
       human_review_required,
       confidence: 1.0,
     };
@@ -241,7 +244,7 @@ IMPORTANT: Only return the raw JSON object, do not wrap it in markdown blocks or
       confidence = 0.85;
     }
 
-    const department = getDepartment(case_type);
+    const department = mapDepartment(case_type);
     const human_review_required = severity === "critical" || case_type === "phishing_or_social_engineering";
 
     return {
@@ -256,15 +259,17 @@ IMPORTANT: Only return the raw JSON object, do not wrap it in markdown blocks or
     console.error("Error in classifyTicket via LLM:", error);
     console.warn("Falling back to rule-based mock classifier.");
     
-    const mock = getMockClassification(text);
-    const department = getDepartment(mock.case_type);
-    const human_review_required = mock.severity === "critical" || mock.case_type === "phishing_or_social_engineering";
+    const case_type = detectCaseType(text).caseType;
+    const severity = detectSeverity(text, case_type);
+    const department = mapDepartment(case_type);
+    const agent_summary = summarize(text, case_type, severity);
+    const human_review_required = severity === "critical" || case_type === "phishing_or_social_engineering";
 
     return {
-      case_type: mock.case_type,
-      severity: mock.severity,
+      case_type,
+      severity,
       department,
-      agent_summary: mock.agent_summary,
+      agent_summary,
       human_review_required,
       confidence: 0.5,
     };
