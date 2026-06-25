@@ -33,7 +33,7 @@ ticket-classification/
 
 ### `GET /api/health`
 
-Returns service health information.
+Returns service health information.asd
 
 ### `POST /api/sort-ticket`
 
