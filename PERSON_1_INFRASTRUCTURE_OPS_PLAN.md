@@ -87,7 +87,8 @@ curl https://YOUR_DEPLOYMENT_URL/api/health
 Use `.env.local` locally:
 
 ```bash
-OPENAI_API_KEY=
+GROQ_API_KEY=
+GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
 Rules:
